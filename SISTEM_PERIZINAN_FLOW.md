@@ -529,586 +529,313 @@ const capturePhoto = async () => {
 };
 ```
 
-#### **Return Management**
+#### **Complete Satpam Dashboard Implementation**
+
 ```javascript
-// Get combined dashboard data (today's pickups + currently out)
+/**
+ * 🎯 COMPREHENSIVE SATPAM DASHBOARD
+ * This section shows how to build a complete satpam dashboard
+ * that handles all izin data efficiently in one API call
+ */
+
+// Main API call - Gets ALL izin data for satpam
 const getSatpamWorkList = async (token) => {
-  const response = await fetch('https://project.linier.my.id/api/izin', {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  
-  const data = await response.json();
-  if (data.success) {
-    // Separate data by status for easier handling
-    const todayPickups = data.data.filter(izin => izin.status === 'approved');
-    const currentlyOut = data.data.filter(izin => izin.status === 'picked_up');
-    
-    console.log('Today\'s Pickups:', todayPickups);
-    console.log('Currently Out:', currentlyOut);
-    console.log('Summary:', data.summary);
-    
-    return {
-      todayPickups,
-      currentlyOut,
-      summary: data.summary,
-      allData: data.data
-    };
-  }
-};
-
-// Example usage in Satpam dashboard
-const loadSatpamDashboard = async (token) => {
   try {
-    const workData = await getSatpamWorkList(token);
-    
-    // Display today's pickup list
-    displayTodayPickups(workData.todayPickups);
-    
-    // Display currently out santri
-    displayCurrentlyOut(workData.currentlyOut);
-    
-    // Update summary badges
-    updateSummaryBadges(workData.summary);
-    
-  } catch (error) {
-    console.error('Failed to load satpam dashboard:', error);
-  }
-};
-
-const displayTodayPickups = (pickups) => {
-  console.log('\n📋 TODAY\'S PICKUPS TO VERIFY:');
-  pickups.forEach(izin => {
-    console.log(`• ${izin.santri.nama} - ${izin.alasan}`);
-    console.log(`  Wali: ${izin.santri.wali.user.name} (${izin.santri.wali.user.no_hp})`);
-    console.log(`  Scheduled: ${izin.tanggal_jemput}`);
-    console.log(`  Action needed: Verify pickup\n`);
-  });
-};
-
-const displayCurrentlyOut = (currentlyOut) => {
-  console.log('\n🚶 CURRENTLY OUT SANTRI:');
-  currentlyOut.forEach(izin => {
-    const isOverdue = new Date() > new Date(izin.tanggal_kembali);
-    const status = isOverdue ? '⚠️ OVERDUE' : '✅ On time';
-    
-    console.log(`• ${izin.santri.nama} - ${status}`);
-    console.log(`  Picked up: ${new Date(izin.pickup_time).toLocaleString()}`);
-    console.log(`  Should return: ${izin.tanggal_kembali}`);
-    console.log(`  Action available: Confirm return\n`);
-  });
-};
-
-const updateSummaryBadges = (summary) => {
-  console.log('\n📊 SUMMARY STATISTICS:');
-  console.log(`Today's Pickups: ${summary.today_pickups}`);
-  console.log(`Currently Out: ${summary.currently_out}`);
-  console.log(`Total Items: ${summary.total}`);
-};
-
-// Filter and search functions for Satpam
-const searchSantri = async (token, searchTerm) => {
-  const workData = await getSatpamWorkList(token);
-  
-  const filtered = workData.allData.filter(izin => 
-    izin.santri.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    izin.santri.wali.user.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-  
-  return filtered;
-};
-
-const getOverdueSantri = async (token) => {
-  const workData = await getSatpamWorkList(token);
-  
-  const overdue = workData.currentlyOut.filter(izin => 
-    new Date() > new Date(izin.tanggal_kembali)
-  );
-  
-  console.log(`⚠️ Found ${overdue.length} overdue santri:`);
-  overdue.forEach(izin => {
-    const daysOverdue = Math.ceil(
-      (new Date() - new Date(izin.tanggal_kembali)) / (1000 * 60 * 60 * 24)
-    );
-    console.log(`• ${izin.santri.nama} - ${daysOverdue} days overdue`);
-  });
-  
-  return overdue;
-};
-
-// Confirm return (NO PHOTO NEEDED)
-const confirmReturn = async (token, izinId, notes = '') => {
-  const response = await fetch(`https://project.linier.my.id/api/izin/${izinId}/return-confirmation`, {
-    method: 'POST',
-    headers: { 
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      return_notes: notes || 'Santri kembali dalam kondisi sehat dan tepat waktu'
-    })
-  });
-  
-  const data = await response.json();
-  if (data.success) {
-    console.log('Return confirmed:', data.data);
-    // Status changed to "completed"
-  }
-};
-```
-
----
-
-## 📊 **STATUS FLOW**
-
-### **Status Progression**
-```
-📝 pending → ✅ approved → 🚚 picked_up → 🏠 completed
-     ↓           ↓            ↓
-     ❌ rejected  ❌ rejected  (stays picked_up until return)
-```
-
-### **Status Definitions**
-- **`pending`**: Baru dibuat, menunggu review mustahiq
-- **`approved`**: Disetujui mustahiq, siap untuk pickup
-- **`rejected`**: Ditolak (bisa dari mustahiq atau satpam)
-- **`picked_up`**: Santri sudah dijemput, sedang di luar
-- **`completed`**: Santri sudah kembali, izin selesai
-
-### **Who Can Change Status**
-| Status | Changed By | Method |
-|--------|------------|--------|
-| `pending` → `approved` | Mustahiq | PUT `/api/izin/{id}/status` |
-| `pending` → `rejected` | Mustahiq | PUT `/api/izin/{id}/status` |
-| `approved` → `picked_up` | Satpam | POST `/api/izin/{id}/pickup-verification` |
-| `approved` → `rejected` | Satpam | POST `/api/izin/{id}/pickup-verification` |
-| `picked_up` → `completed` | Satpam | POST `/api/izin/{id}/return-confirmation` |
-
----
-
-## 🔐 **AUTHENTICATION**
-
-### **Universal Login Flow**
-```javascript
-const login = async (no_hp, password) => {
-  try {
-    const response = await fetch('https://project.linier.my.id/api/login', {
-      method: 'POST',
+    const response = await fetch('https://project.linier.my.id/api/izin', {
       headers: { 
-        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
         'Accept': 'application/json'
-      },
-      body: JSON.stringify({ no_hp, password })
+      }
     });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
     
     const data = await response.json();
     
-    if (data.success) {
-      // Store token securely
-      localStorage.setItem('auth_token', data.token);
-      localStorage.setItem('user_role', data.role);
-      
-      // Route based on role
-      switch(data.role) {
-        case 'admin': 
-          window.location.href = '/admin-dashboard';
-          break;
-        case 'mustahiq': 
-          window.location.href = '/mustahiq-dashboard';
-          break;
-        case 'wali': 
-          window.location.href = '/wali-dashboard';
-          break;
-        case 'satpam': 
-          window.location.href = '/satpam-dashboard';
-          break;
-        default:
-          console.error('Unknown role:', data.role);
-      }
-      
-      return { success: true, role: data.role, token: data.token };
-    } else {
-      throw new Error(data.message || 'Login failed');
+    if (!data.success) {
+      throw new Error(data.message || 'Failed to fetch izin data');
     }
+    
+    return data;
   } catch (error) {
-    console.error('Login error:', error);
-    return { success: false, error: error.message };
+    console.error('Error fetching satpam work list:', error);
+    throw error;
   }
 };
-```
 
-### **Get Current User**
-```javascript
-const getCurrentUser = async (token) => {
-  const response = await fetch('https://project.linier.my.id/api/user', {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
+// Process and categorize the API response
+const processSatpamData = (apiResponse) => {
+  const izinList = apiResponse.data || [];
   
-  const data = await response.json();
-  if (data.success) {
-    return {
-      user: data.user,
-      role: data.role
-    };
-  }
-};
-```
-
-### **Refresh User Data**
-```javascript
-const refreshUserData = async (token) => {
-  const response = await fetch('https://project.linier.my.id/api/refresh', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
+  // Categorize by status for different dashboard sections
+  const categorized = {
+    // Today's approved izin waiting for pickup verification
+    todayPickups: izinList.filter(izin => 
+      izin.status === 'approved' && 
+      isToday(izin.tanggal_jemput)
+    ),
+    
+    // All approved izin (including future dates)
+    allApproved: izinList.filter(izin => izin.status === 'approved'),
+    
+    // Currently out santri (picked up but not returned)
+    currentlyOut: izinList.filter(izin => izin.status === 'picked_up'),
+    
+    // Completed izin (for reference)
+    completed: izinList.filter(izin => izin.status === 'completed'),
+    
+    // Rejected izin (for audit)
+    rejected: izinList.filter(izin => izin.status === 'rejected')
+  };
   
-  const data = await response.json();
-  if (data.success) {
-    return {
-      user: data.user,
-      role: data.role
-    };
-  }
-};
-```
-
-### **Logout**
-```javascript
-const logout = async (token) => {
-  try {
-    await fetch('https://project.linier.my.id/api/logout', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-  } catch (error) {
-    console.error('Logout error:', error);
-  } finally {
-    // Always clear local storage
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('user_role');
-    window.location.href = '/login';
-  }
-};
-```
-
-### **Token Management**
-```javascript
-// Auto-refresh token before expiry
-const setupTokenRefresh = (token) => {
-  setInterval(async () => {
-    try {
-      const refreshed = await refreshUserData(token);
-      if (refreshed) {
-        console.log('Token refreshed successfully');
-      }
-    } catch (error) {
-      console.error('Token refresh failed:', error);
-      logout(token); // Force logout if refresh fails
+  // Add computed fields for easier frontend handling
+  categorized.currentlyOut = categorized.currentlyOut.map(izin => ({
+    ...izin,
+    isOverdue: new Date() > new Date(izin.tanggal_kembali),
+    daysOut: calculateDaysOut(izin.pickup_time),
+    daysUntilReturn: calculateDaysUntilReturn(izin.tanggal_kembali)
+  }));
+  
+  return {
+    ...categorized,
+    summary: apiResponse.summary,
+    statistics: {
+      totalActive: categorized.todayPickups.length + categorized.currentlyOut.length,
+      overdueCount: categorized.currentlyOut.filter(i => i.isOverdue).length,
+      todayReturns: categorized.currentlyOut.filter(i => 
+        isToday(i.tanggal_kembali)
+      ).length
     }
-  }, 30 * 60 * 1000); // Every 30 minutes
+  };
 };
 
-// Request interceptor for automatic token attachment
-const apiRequest = async (url, options = {}) => {
+// Complete dashboard loading function
+const loadSatpamDashboard = async () => {
   const token = localStorage.getItem('auth_token');
   
-  const defaultHeaders = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
-  };
-  
-  if (token) {
-    defaultHeaders['Authorization'] = `Bearer ${token}`;
+  if (!token) {
+    console.error('No auth token found');
+    return redirectToLogin();
   }
   
-  const config = {
-    ...options,
-    headers: {
-      ...defaultHeaders,
-      ...options.headers
+  try {
+    // Show loading state
+    showLoadingState();
+    
+    // Fetch and process data
+    const apiResponse = await getSatpamWorkList(token);
+    const processedData = processSatpamData(apiResponse);
+    
+    // Update different dashboard sections
+    renderDashboardSections(processedData);
+    
+    // Update summary statistics
+    updateStatisticsBadges(processedData.statistics);
+    
+    // Setup real-time updates (optional)
+    setupAutoRefresh(token);
+    
+  } catch (error) {
+    console.error('Failed to load satpam dashboard:', error);
+    showErrorState(error.message);
+  }
+};
+
+// Render different sections of the dashboard
+const renderDashboardSections = (data) => {
+  // 1. Today's Pickups Section
+  renderTodayPickups(data.todayPickups);
+  
+  // 2. Currently Out Section
+  renderCurrentlyOut(data.currentlyOut);
+  
+  // 3. Recent Activity (optional)
+  renderRecentActivity(data.completed.slice(0, 5));
+  
+  // 4. Search functionality setup
+  setupSearchFunctionality(data);
+};
+
+const renderTodayPickups = (pickups) => {
+  console.log('\n📋 TODAY\'S PICKUPS TO VERIFY:');
+  console.log(`Found ${pickups.length} izin(s) ready for pickup`);
+  
+  if (pickups.length === 0) {
+    console.log('✅ No pickups scheduled for today');
+    return;
+  }
+  
+  pickups.forEach((izin, index) => {
+    console.log(`\n${index + 1}. ${izin.santri.nama}`);
+    console.log(`   Reason: ${izin.alasan}`);
+    console.log(`   Wali: ${izin.santri.wali.user.name} (${izin.santri.wali.user.no_hp})`);
+    console.log(`   Scheduled: ${formatDateTime(izin.tanggal_jemput)}`);
+    console.log(`   Return: ${formatDateTime(izin.tanggal_kembali)}`);
+    console.log(`   Duration: ${izin.keterangan || 'N/A'}`);
+    console.log(`   🎯 Action: Verify pickup with photo`);
+  });
+};
+
+const renderCurrentlyOut = (currentlyOut) => {
+  console.log('\n🚶 CURRENTLY OUT SANTRI:');
+  console.log(`Found ${currentlyOut.length} santri currently outside`);
+  
+  if (currentlyOut.length === 0) {
+    console.log('✅ All santri are in the pondok');
+    return;
+  }
+  
+  // Group by overdue status
+  const overdue = currentlyOut.filter(i => i.isOverdue);
+  const onTime = currentlyOut.filter(i => !i.isOverdue);
+  
+  if (overdue.length > 0) {
+    console.log(`\n⚠️ OVERDUE (${overdue.length}):`);
+    overdue.forEach((izin, index) => {
+      const daysOverdue = Math.abs(izin.daysUntilReturn);
+      console.log(`   ${index + 1}. ${izin.santri.nama} - ${daysOverdue} days overdue`);
+      console.log(`      Picked up: ${formatDateTime(izin.pickup_time)}`);
+      console.log(`      Should return: ${formatDateTime(izin.tanggal_kembali)}`);
+      console.log(`      🚨 Action: Contact wali or confirm return`);
+    });
+  }
+  
+  if (onTime.length > 0) {
+    console.log(`\n✅ ON TIME (${onTime.length}):`);
+    onTime.forEach((izin, index) => {
+      console.log(`   ${index + 1}. ${izin.santri.nama}`);
+      console.log(`      Picked up: ${formatDateTime(izin.pickup_time)}`);
+      console.log(`      Return by: ${formatDateTime(izin.tanggal_kembali)}`);
+      console.log(`      Days out: ${izin.daysOut}`);
+      console.log(`      🏠 Action: Confirm return when back`);
+    });
+  }
+};
+
+// Utility functions for dashboard
+const isToday = (dateString) => {
+  const today = new Date();
+  const date = new Date(dateString);
+  return today.toDateString() === date.toDateString();
+};
+
+const calculateDaysOut = (pickupTime) => {
+  if (!pickupTime) return 0;
+  const pickup = new Date(pickupTime);
+  const now = new Date();
+  return Math.ceil((now - pickup) / (1000 * 60 * 60 * 24));
+};
+
+const calculateDaysUntilReturn = (returnDate) => {
+  const returnDateTime = new Date(returnDate);
+  const now = new Date();
+  return Math.ceil((returnDateTime - now) / (1000 * 60 * 60 * 24));
+};
+
+const formatDateTime = (dateString) => {
+  return new Date(dateString).toLocaleString('id-ID', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+// Update statistics and summary badges
+const updateStatisticsBadges = (statistics) => {
+  console.log('\n📊 DASHBOARD STATISTICS:');
+  console.log(`🎯 Active Items: ${statistics.totalActive}`);
+  console.log(`📋 Today's Pickups: ${statistics.todayPickups || 0}`);
+  console.log(`🚶 Currently Out: ${statistics.currentlyOut || 0}`);
+  console.log(`⚠️ Overdue: ${statistics.overdueCount}`);
+  console.log(`🏠 Today's Returns: ${statistics.todayReturns}`);
+  console.log(`📦 Total Items: ${statistics.total || 0}`);
+};
+
+// Search and filter functionality
+const setupSearchFunctionality = (allData) => {
+  // Search across all data
+  window.searchSantri = (searchTerm) => {
+    const term = searchTerm.toLowerCase();
+    const allIzin = [
+      ...allData.todayPickups,
+      ...allData.currentlyOut,
+      ...allData.allApproved,
+      ...allData.completed.slice(0, 10) // Recent completed
+    ];
+    
+    return allIzin.filter(izin => 
+      izin.santri.nama.toLowerCase().includes(term) ||
+      izin.santri.wali.user.name.toLowerCase().includes(term) ||
+      izin.alasan.toLowerCase().includes(term) ||
+      izin.santri.wali.user.no_hp.includes(term)
+    );
+  };
+  
+  // Quick filters
+  window.getOverdueSantri = () => allData.currentlyOut.filter(i => i.isOverdue);
+  window.getTodayReturns = () => allData.currentlyOut.filter(i => 
+    isToday(i.tanggal_kembali)
+  );
+  
+  console.log('\n🔍 Search functions available:');
+  console.log('- searchSantri("name or phone")');
+  console.log('- getOverdueSantri()');
+  console.log('- getTodayReturns()');
+};
+
+// Auto-refresh functionality (optional)
+const setupAutoRefresh = (token) => {
+  const REFRESH_INTERVAL = 60000; // 1 minute
+  
+  const refreshTimer = setInterval(async () => {
+    try {
+      const apiResponse = await getSatpamWorkList(token);
+      const processedData = processSatpamData(apiResponse);
+      
+      // Check for new items
+      const newPickups = processedData.todayPickups.length;
+      const newReturns = processedData.currentlyOut.length;
+      
+      console.log(`🔄 Auto-refresh: ${newPickups} pickups, ${newReturns} currently out`);
+      
+      // Update UI silently
+      renderDashboardSections(processedData);
+      updateStatisticsBadges(processedData.statistics);
+      
+    } catch (error) {
+      console.warn('Auto-refresh failed:', error.message);
     }
+  }, REFRESH_INTERVAL);
+  
+  // Cleanup function
+  window.stopAutoRefresh = () => {
+    clearInterval(refreshTimer);
+    console.log('Auto-refresh stopped');
   };
-  
-  const response = await fetch(url, config);
-  
-  // Handle 401 Unauthorized
-  if (response.status === 401) {
-    logout(token);
-    throw new Error('Session expired');
-  }
-  
-  return response;
-};
-```
-
----
-
-## 🗄️ **DATABASE SCHEMA**
-
-### **Key Tables**
-
-#### **users**
-```sql
-- id (PK)
-- name
-- no_hp (unique, auth identifier)
-- email (nullable)
-- password
-- created_at, updated_at
-```
-
-#### **mustahiqs**
-```sql
-- id (PK)
-- user_id (FK → users.id)
-- created_at, updated_at
-```
-
-#### **walis**
-```sql
-- id (PK)
-- user_id (FK → users.id)
-- created_at, updated_at
-```
-
-#### **santris**
-```sql
-- id (PK)
-- nama
-- mustahiq_id (FK → mustahiqs.id)
-- wali_id (FK → walis.id)
-- created_at, updated_at
-```
-
-#### **izins**
-```sql
-- id (PK)
-- santri_id (FK → santris.id)
-- alasan (reason)
-- tanggal_jemput (pickup date)
-- tanggal_kembali (return date)
-- tanggal_telat (late return date, nullable)
-- status (pending/approved/rejected/picked_up/completed)
-- lampiran (attachment, nullable)
-- catatan (notes, nullable)
-
--- Pickup verification fields
-- santri_pickup_photo (base64 photo)
-- pickup_time (timestamp)
-- return_time (timestamp)
-- verified_by (satpam name)
-- verification_notes
-- rejection_reason (nullable)
-- rejected_by (nullable)
-- rejection_time (nullable)
-
-- created_at, updated_at, deleted_at
-```
-
-#### **satpams**
-```sql
-- id (PK)
-- user_id (FK → users.id)
-- created_at, updated_at
-```
-
-#### **pickup_verifications** (Audit Trail)
-```sql
-- id (PK)
-- izin_id (FK → izins.id)
-- satpam_id (FK → satpams.id)
-- identity_verified (boolean)
-- santri_pickup_photo (base64)
-- verification_notes
-- rejection_reason (nullable)
-- created_at, updated_at
-```
-
-### **Relationships**
-```
-users (1) → (1) mustahiq/wali/satpam
-mustahiq (1) → (many) santris
-wali (1) → (many) santris
-santri (1) → (many) izins
-satpam (1) → (many) pickup_verifications
-izin (1) → (many) pickup_verifications
-```
-
----
-
-## 🧪 **TESTING GUIDE**
-
-### **Test Accounts**
-```javascript
-const testAccounts = {
-  admin: {
-    no_hp: '08123456789',
-    password: 'admin123',
-    role: 'admin'
-  },
-  mustahiq: {
-    no_hp: '08123456001',
-    password: 'password123',
-    role: 'mustahiq',
-    name: 'Ustadz Ahmad'
-  },
-  wali: {
-    no_hp: '08123456101',
-    password: 'password123',
-    role: 'wali',
-    name: 'Pak Suryanto'
-  },
-  satpam: {
-    no_hp: '08123456201',
-    password: 'password123',
-    role: 'satpam',
-    name: 'Satpam Edi'
-  }
-};
-```
-
-### **Complete Flow Test**
-```javascript
-// Test complete izin flow
-const testCompleteFlow = async () => {
-  console.log('🧪 Testing Complete Izin Flow...');
-  
-  // 1. Wali creates izin
-  const waliLogin = await login('08123456101', 'password123');
-  const izinData = {
-    santri_id: 1,
-    alasan: 'Test acara keluarga',
-    tanggal_jemput: '2025-07-30',
-    tanggal_kembali: '2025-08-01',
-    catatan: 'Test izin'
-  };
-  
-  const createResult = await apiRequest('https://project.linier.my.id/api/create-izin', {
-    method: 'POST',
-    body: JSON.stringify(izinData)
-  });
-  const izin = await createResult.json();
-  const izinId = izin.data.id;
-  console.log('✅ Step 1: Izin created with ID:', izinId);
-  
-  // 2. Mustahiq approves izin
-  const mustahiqLogin = await login('08123456001', 'password123');
-  const approveResult = await apiRequest(`https://project.linier.my.id/api/izin/${izinId}/status`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      status: 'approved',
-      notes: 'Test approval'
-    })
-  });
-  console.log('✅ Step 2: Izin approved by mustahiq');
-  
-  // 3. Satpam verifies pickup
-  const satpamLogin = await login('08123456201', 'password123');
-  const pickupResult = await apiRequest(`https://project.linier.my.id/api/izin/${izinId}/pickup-verification`, {
-    method: 'POST',
-    body: JSON.stringify({
-      identity_verified: true,
-      santri_pickup_photo: 'data:image/jpeg;base64,test_photo_data',
-      verification_notes: 'Test pickup verification'
-    })
-  });
-  console.log('✅ Step 3: Pickup verified by satpam');
-  
-  // 4. Satpam confirms return
-  const returnResult = await apiRequest(`https://project.linier.my.id/api/izin/${izinId}/return-confirmation`, {
-    method: 'POST',
-    body: JSON.stringify({
-      return_notes: 'Test return confirmation'
-    })
-  });
-  console.log('✅ Step 4: Return confirmed by satpam');
-  
-  console.log('🎉 Complete flow test successful!');
 };
 
-// Run test
-testCompleteFlow().catch(console.error);
-```
+// Error and loading states
+const showLoadingState = () => {
+  console.log('⏳ Loading satpam dashboard...');
+};
 
-### **Error Scenarios Testing**
-```javascript
-const testErrorScenarios = async () => {
-  console.log('🚨 Testing Error Scenarios...');
-  
-  try {
-    // Test 1: Invalid credentials
-    await login('00000000000', 'wrongpassword');
-  } catch (error) {
-    console.log('✅ Invalid login handled:', error.message);
-  }
-  
-  try {
-    // Test 2: Unauthorized access
-    const response = await fetch('https://project.linier.my.id/api/izin', {
-      headers: { 'Authorization': 'Bearer invalid_token' }
-    });
-    console.log('✅ Invalid token handled:', response.status);
-  } catch (error) {
-    console.log('✅ Unauthorized access handled:', error.message);
-  }
-  
-  try {
-    // Test 3: Missing required fields
-    const waliToken = (await login('08123456101', 'password123')).token;
-    const response = await apiRequest('https://project.linier.my.id/api/create-izin', {
-      method: 'POST',
-      body: JSON.stringify({
-        // Missing required santri_id
-        alasan: 'Test'
-      })
-    });
-    console.log('✅ Validation error handled:', response.status);
-  } catch (error) {
-    console.log('✅ Missing fields handled:', error.message);
-  }
+const showErrorState = (message) => {
+  console.error('❌ Dashboard Error:', message);
+  console.log('🔧 Troubleshooting:');
+  console.log('1. Check your internet connection');
+  console.log('2. Verify your auth token is valid');
+  console.log('3. Try refreshing the page');
+};
+
+const redirectToLogin = () => {
+  console.log('🔐 Redirecting to login...');
+  // window.location.href = '/login';
 };
 ```
-
----
-
-## 🚀 **DEPLOYMENT & PRODUCTION NOTES**
-
-### **Environment Variables**
-```env
-APP_URL=https://project.linier.my.id
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=pondok_perizinan
-DB_USERNAME=your_username
-DB_PASSWORD=your_password
-
-SANCTUM_STATEFUL_DOMAINS=project.linier.my.id
-SESSION_DOMAIN=.project.linier.my.id
-```
-
-### **Security Considerations**
-- ✅ All API endpoints protected with Sanctum authentication
-- ✅ Role-based access control implemented
-- ✅ Input validation on all requests
-- ✅ SQL injection protection via Eloquent ORM
-- ✅ CORS configuration for frontend domains
-- ✅ Rate limiting on authentication endpoints
-
-### **Performance Optimization**
-- ✅ Database indexing on foreign keys
-- ✅ Eager loading for relationships
-- ✅ API response pagination for large datasets
-- ✅ Image optimization for photo uploads
-- ✅ Caching strategy for dashboard statistics
-
-### **Monitoring & Logging**
-- ✅ Audit trail via pickup_verifications table
-- ✅ Soft deletes for data recovery
-- ✅ Request/response logging
-- ✅ Error tracking and alerting
-- ✅ Performance monitoring
-
----
 
 ## 📞 **SUPPORT & DOCUMENTATION**
 
@@ -1166,8 +893,9 @@ const SatpamApp = {
         this.renderDashboard();
       }
     } catch (error) {
-      console.error('Dashboard load failed:', error);
-      this.showError('Gagal memuat data dashboard');
+      Alert.alert('Error', 'Gagal memuat data dashboard');
+    } finally {
+      setLoading(false);
     }
   },
   
@@ -1338,224 +1066,1953 @@ const SatpamApp = {
         this.showError(data.message || 'Verifikasi gagal');
       }
     } catch (error) {
-      console.error('Verification failed:', error);
-      this.showError('Terjadi kesalahan saat verifikasi');
+      this.showError(`Gagal memproses verifikasi: ${error.message}`);
     }
-  },
-  
-  // Confirm return
-  async confirmReturn(izinId) {
-    const notes = prompt('Catatan kondisi santri (opsional):');
-    
-    try {
-      const response = await fetch(`https://project.linier.my.id/api/izin/${izinId}/return-confirmation`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          return_notes: notes || 'Santri kembali dalam kondisi sehat'
-        })
-      });
-      
-      const data = await response.json();
-      if (data.success) {
-        this.showSuccess('Kepulangan santri berhasil dikonfirmasi!');
-        await this.loadDashboard(); // Refresh dashboard
-      } else {
-        this.showError(data.message || 'Konfirmasi gagal');
-      }
-    } catch (error) {
-      console.error('Return confirmation failed:', error);
-      this.showError('Terjadi kesalahan saat konfirmasi');
-    }
-  },
-  
-  // Auto refresh every 30 seconds
-  setupAutoRefresh() {
-    setInterval(async () => {
-      await this.loadDashboard();
-    }, 30000);
-  },
-  
-  // Utility functions
-  closeModal() {
-    document.getElementById('verification-modal').style.display = 'none';
-    // Stop camera stream
-    const video = document.getElementById('camera-preview');
-    if (video.srcObject) {
-      video.srcObject.getTracks().forEach(track => track.stop());
-    }
-  },
-  
-  showSuccess(message) {
-    // Show success toast/alert
-    console.log('✅ Success:', message);
-  },
-  
-  showError(message) {
-    // Show error toast/alert
-    console.log('❌ Error:', message);
   }
 };
-
-// Usage example:
-// Initialize the app after login
-// SatpamApp.init(authToken);
 ```
 
-### **React Native Example for Satpam:**
-```javascript
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Alert } from 'react-native';
+---
 
-const SatpamDashboard = ({ authToken }) => {
-  const [workData, setWorkData] = useState(null);
-  const [loading, setLoading] = useState(true);
+## 🔧 **TROUBLESHOOTING GUIDE**
+
+### **Common API Issues and Solutions**
+
+#### **1. Authentication Problems**
+
+**Problem**: `401 Unauthorized` errors
+```javascript
+// ❌ Wrong
+fetch('/api/izin', {
+  headers: { 'Authorization': token }
+});
+
+// ✅ Correct  
+fetch('/api/izin', {
+  headers: { 'Authorization': `Bearer ${token}` }
+});
+```
+
+**Problem**: Token expired
+```javascript
+// Check token validity
+const checkTokenValidity = async (token) => {
+  try {
+    const response = await fetch('/api/user', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.status === 401) {
+      // Token expired, redirect to login
+      localStorage.removeItem('auth_token');
+      window.location.href = '/login';
+      return false;
+    }
+    
+    return response.ok;
+  } catch (error) {
+    console.error('Token check failed:', error);
+    return false;
+  }
+};
+```
+
+#### **2. File Upload Issues**
+
+**Problem**: Photo upload fails
+```javascript
+// ❌ Wrong - Don't set Content-Type for FormData
+const formData = new FormData();
+formData.append('santri_pickup_photo', file);
+
+fetch('/api/izin/1/pickup-verification', {
+  method: 'POST',
+  headers: { 
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'multipart/form-data' // ❌ Don't do this
+  },
+  body: formData
+});
+
+// ✅ Correct - Let browser set Content-Type
+fetch('/api/izin/1/pickup-verification', {
+  method: 'POST',
+  headers: { 'Authorization': `Bearer ${token}` }, // Only auth header
+  body: formData
+});
+```
+
+**Problem**: File size too large
+```javascript
+// Check file size before upload
+const validateFile = (file) => {
+  const maxSize = 5 * 1024 * 1024; // 5MB
   
-  // Load dashboard data
-  const loadDashboard = async () => {
-    try {
-      const response = await fetch('https://project.linier.my.id/api/izin', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
-      
-      const data = await response.json();
-      if (data.success) {
-        setWorkData({
-          todayPickups: data.data.filter(izin => izin.status === 'approved'),
-          currentlyOut: data.data.filter(izin => izin.status === 'picked_up'),
-          summary: data.summary
-        });
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Gagal memuat data dashboard');
-    } finally {
-      setLoading(false);
+  if (!file) {
+    throw new Error('No file selected');
+  }
+  
+  if (file.size > maxSize) {
+    throw new Error('File too large. Maximum size is 5MB');
+  }
+  
+  if (!file.type.startsWith('image/')) {
+    throw new Error('File must be an image');
+  }
+  
+  return true;
+};
+```
+
+#### **3. Data Processing Issues**
+
+**Problem**: Date formatting inconsistencies
+```javascript
+// ✅ Consistent date formatting
+const formatDate = (dateString) => {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    
+    return date.toLocaleString('id-ID', {
+      year: 'numeric',
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    console.error('Date formatting error:', error);
+    return 'Invalid Date';
+  }
+};
+```
+
+**Problem**: Status filtering not working
+```javascript
+// ✅ Robust status filtering
+const filterByStatus = (izinList, status) => {
+  if (!Array.isArray(izinList)) {
+    console.warn('izinList is not an array:', izinList);
+    return [];
+  }
+  
+  return izinList.filter(izin => {
+    if (!izin || typeof izin !== 'object') {
+      console.warn('Invalid izin object:', izin);
+      return false;
+    }
+    
+    return izin.status === status;
+  });
+};
+```
+
+#### **4. Network and Connectivity Issues**
+
+**Problem**: CORS errors in development
+```javascript
+// Add proper headers for CORS
+const makeApiRequest = async (url, options = {}) => {
+  const defaultHeaders = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  };
+  
+  // Don't set Content-Type for FormData
+  if (options.body instanceof FormData) {
+    delete defaultHeaders['Content-Type'];
+  }
+  
+  const config = {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...options.headers
     }
   };
   
-  useEffect(() => {
-    loadDashboard();
+  try {
+    const response = await fetch(url, config);
     
-    // Auto refresh every 30 seconds
-    const interval = setInterval(loadDashboard, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('API request failed:', error);
+    throw error;
+  }
+};
+```
+
+**Problem**: Network timeout handling
+```javascript
+// Add timeout to requests
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
-  const startVerification = (izinId) => {
-    // Navigate to verification screen
-    navigation.navigate('VerificationScreen', { izinId });
-  };
-  
-  const confirmReturn = async (izinId, santriName) => {
-    Alert.alert(
-      'Konfirmasi Kepulangan',
-      `Konfirmasi kepulangan ${santriName}?`,
-      [
-        { text: 'Batal', style: 'cancel' },
-        { 
-          text: 'Ya', 
-          onPress: async () => {
-            try {
-              const response = await fetch(`https://project.linier.my.id/api/izin/${izinId}/return-confirmation`, {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${authToken}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  return_notes: 'Santri kembali dalam kondisi sehat'
-                })
-              });
-              
-              const data = await response.json();
-              if (data.success) {
-                Alert.alert('Berhasil', 'Kepulangan berhasil dikonfirmasi');
-                loadDashboard(); // Refresh
-              }
-            } catch (error) {
-              Alert.alert('Error', 'Gagal konfirmasi kepulangan');
-            }
-          }
-        }
-      ]
-    );
-  };
-  
-  if (loading) {
-    return <Text>Loading...</Text>;
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+    
+    throw error;
+  }
+};
+```
+
+#### **5. Mobile-Specific Issues**
+
+**Problem**: Camera not working on mobile
+```javascript
+// Check camera support
+const checkCameraSupport = () => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    console.warn('Camera not supported in this browser');
+    return false;
   }
   
-  return (
-    <View style={{ flex: 1, padding: 16 }}>
-      {/* Summary Cards */}
-      <View style={{ flexDirection: 'row', marginBottom: 20 }}>
-        <View style={{ flex: 1, backgroundColor: '#e3f2fd', padding: 16, margin: 4, borderRadius: 8 }}>
-          <Text style={{ fontSize: 24, fontWeight: 'bold' }}>{workData?.summary.today_pickups}</Text>
-          <Text>Pickup Hari Ini</Text>
-        </View>
-        <View style={{ flex: 1, backgroundColor: '#fff3e0', padding: 16, margin: 4, borderRadius: 8 }}>
-          <Text style={{ fontSize: 24, fontWeight: 'bold' }}>{workData?.summary.currently_out}</Text>
-          <Text>Sedang Keluar</Text>
-        </View>
-      </View>
-      
-      {/* Today's Pickups */}
-      <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>Pickup Hari Ini</Text>
-      <FlatList
-        data={workData?.todayPickups}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => (
-          <View style={{ backgroundColor: 'white', padding: 16, marginBottom: 8, borderRadius: 8 }}>
-            <Text style={{ fontSize: 16, fontWeight: 'bold' }}>{item.santri.nama}</Text>
-            <Text>Wali: {item.santri.wali.user.name}</Text>
-            <Text>HP: {item.santri.wali.user.no_hp}</Text>
-            <Text>Keperluan: {item.alasan}</Text>
-            <TouchableOpacity 
-              style={{ backgroundColor: '#2196f3', padding: 10, borderRadius: 5, marginTop: 10 }}
-              onPress={() => startVerification(item.id)}
-            >
-              <Text style={{ color: 'white', textAlign: 'center' }}>Verifikasi Pickup</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      />
-      
-      {/* Currently Out */}
-      <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10, marginTop: 20 }}>Sedang Keluar</Text>
-      <FlatList
-        data={workData?.currentlyOut}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => {
-          const isOverdue = new Date() > new Date(item.tanggal_kembali);
-          return (
-            <View style={{ 
-              backgroundColor: isOverdue ? '#ffebee' : 'white', 
-              padding: 16, 
-              marginBottom: 8, 
-              borderRadius: 8 
-            }}>
-              <Text style={{ fontSize: 16, fontWeight: 'bold' }}>{item.santri.nama}</Text>
-              <Text>Pickup: {new Date(item.pickup_time).toLocaleString()}</Text>
-              <Text>Harus kembali: {item.tanggal_kembali}</Text>
-              <Text style={{ color: isOverdue ? 'red' : 'green' }}>
-                {isOverdue ? '⚠️ TERLAMBAT' : '✅ Masih waktu'}
-              </Text>
-              <TouchableOpacity 
-                style={{ backgroundColor: '#4caf50', padding: 10, borderRadius: 5, marginTop: 10 }}
-                onPress={() => confirmReturn(item.id, item.santri.nama)}
-              >
-                <Text style={{ color: 'white', textAlign: 'center' }}>Konfirmasi Kembali</Text>
-              </TouchableOpacity>
-            </View>
-          );
-        }}
-      />
-    </View>
-  );
+  return true;
 };
 
-export default SatpamDashboard;
+// Request camera with proper constraints
+const startCamera = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment', // Use back camera on mobile
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    });
+    
+    return stream;
+  } catch (error) {
+    console.error('Camera access denied:', error);
+    throw new Error('Camera access required for photo verification');
+  }
+};
+```
+
+#### **6. Performance Issues**
+
+**Problem**: Dashboard loading slowly
+```javascript
+// Implement data caching
+const DataCache = {
+  data: null,
+  timestamp: null,
+  ttl: 60000, // 1 minute
+  
+  get(key) {
+    if (!this.data || !this.timestamp) return null;
+    
+    const age = Date.now() - this.timestamp;
+    if (age > this.ttl) {
+      this.clear();
+      return null;
+    }
+    
+    return this.data;
+  },
+  
+  set(key, data) {
+    this.data = data;
+    this.timestamp = Date.now();
+  },
+  
+  clear() {
+    this.data = null;
+    this.timestamp = null;
+  }
+};
+
+// Use cache in API calls
+const getCachedSatpamData = async (token) => {
+  const cached = DataCache.get('satpam-data');
+  if (cached) {
+    console.log('Using cached data');
+    return cached;
+  }
+  
+  const fresh = await getSatpamWorkList(token);
+  DataCache.set('satpam-data', fresh);
+  return fresh;
+};
+```
+
+### **Debugging Tips**
+
+#### **1. Enable Detailed Logging**
+```javascript
+const DEBUG = true; // Set to false in production
+
+const debugLog = (message, data = null) => {
+  if (!DEBUG) return;
+  
+  console.log(`🐛 [${new Date().toISOString()}] ${message}`);
+  if (data) {
+    console.log('📊 Data:', data);
+  }
+};
+
+// Use in API calls
+const apiCall = async (endpoint, options) => {
+  debugLog(`Making API call to: ${endpoint}`, options);
+  
+  try {
+    const response = await fetch(endpoint, options);
+    debugLog(`API response status: ${response.status}`);
+    
+    const data = await response.json();
+    debugLog('API response data:', data);
+    
+    return data;
+  } catch (error) {
+    debugLog(`API call failed: ${error.message}`, error);
+    throw error;
+  }
+};
+```
+
+#### **2. Validate API Responses**
+```javascript
+const validateApiResponse = (response, expectedFields = []) => {
+  if (!response) {
+    throw new Error('No response received');
+  }
+  
+  if (!response.success) {
+    throw new Error(response.message || 'API request failed');
+  }
+  
+  if (!response.data) {
+    throw new Error('No data in response');
+  }
+  
+  // Check required fields
+  expectedFields.forEach(field => {
+    if (!(field in response.data)) {
+      console.warn(`Missing expected field: ${field}`);
+    }
+  });
+  
+  return response.data;
+};
+```
+
+#### **3. Test API Endpoints**
+```javascript
+// Quick API test function
+const testApiEndpoint = async (endpoint, method = 'GET', body = null) => {
+  const token = localStorage.getItem('auth_token');
+  
+  console.log(`🧪 Testing ${method} ${endpoint}`);
+  
+  try {
+    const options = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    };
+    
+    if (body && method !== 'GET') {
+      if (body instanceof FormData) {
+        options.body = body;
+      } else {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+      }
+    }
+    
+    const response = await fetch(endpoint, options);
+    const data = await response.json();
+    
+    console.log(`✅ Status: ${response.status}`);
+    console.log('📦 Response:', data);
+    
+    return { status: response.status, data };
+  } catch (error) {
+    console.error(`❌ Test failed:`, error);
+    return { error: error.message };
+  }
+};
+
+// Usage examples:
+// testApiEndpoint('/api/izin');
+// testApiEndpoint('/api/izin/1/pickup-verification', 'POST', formData);
+```
+
+---
+
+## 🔧 **TROUBLESHOOTING GUIDE**
+
+### **Common API Issues and Solutions**
+
+#### **1. Authentication Problems**
+
+**Problem**: `401 Unauthorized` errors
+```javascript
+// ❌ Wrong
+fetch('/api/izin', {
+  headers: { 'Authorization': token }
+});
+
+// ✅ Correct  
+fetch('/api/izin', {
+  headers: { 'Authorization': `Bearer ${token}` }
+});
+```
+
+**Problem**: Token expired
+```javascript
+// Check token validity
+const checkTokenValidity = async (token) => {
+  try {
+    const response = await fetch('/api/user', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.status === 401) {
+      // Token expired, redirect to login
+      localStorage.removeItem('auth_token');
+      window.location.href = '/login';
+      return false;
+    }
+    
+    return response.ok;
+  } catch (error) {
+    console.error('Token check failed:', error);
+    return false;
+  }
+};
+```
+
+#### **2. File Upload Issues**
+
+**Problem**: Photo upload fails
+```javascript
+// ❌ Wrong - Don't set Content-Type for FormData
+const formData = new FormData();
+formData.append('santri_pickup_photo', file);
+
+fetch('/api/izin/1/pickup-verification', {
+  method: 'POST',
+  headers: { 
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'multipart/form-data' // ❌ Don't do this
+  },
+  body: formData
+});
+
+// ✅ Correct - Let browser set Content-Type
+fetch('/api/izin/1/pickup-verification', {
+  method: 'POST',
+  headers: { 'Authorization': `Bearer ${token}` }, // Only auth header
+  body: formData
+});
+```
+
+**Problem**: File size too large
+```javascript
+// Check file size before upload
+const validateFile = (file) => {
+  const maxSize = 5 * 1024 * 1024; // 5MB
+  
+  if (!file) {
+    throw new Error('No file selected');
+  }
+  
+  if (file.size > maxSize) {
+    throw new Error('File too large. Maximum size is 5MB');
+  }
+  
+  if (!file.type.startsWith('image/')) {
+    throw new Error('File must be an image');
+  }
+  
+  return true;
+};
+```
+
+#### **3. Data Processing Issues**
+
+**Problem**: Date formatting inconsistencies
+```javascript
+// ✅ Consistent date formatting
+const formatDate = (dateString) => {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    
+    return date.toLocaleString('id-ID', {
+      year: 'numeric',
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    console.error('Date formatting error:', error);
+    return 'Invalid Date';
+  }
+};
+```
+
+**Problem**: Status filtering not working
+```javascript
+// ✅ Robust status filtering
+const filterByStatus = (izinList, status) => {
+  if (!Array.isArray(izinList)) {
+    console.warn('izinList is not an array:', izinList);
+    return [];
+  }
+  
+  return izinList.filter(izin => {
+    if (!izin || typeof izin !== 'object') {
+      console.warn('Invalid izin object:', izin);
+      return false;
+    }
+    
+    return izin.status === status;
+  });
+};
+```
+
+#### **4. Network and Connectivity Issues**
+
+**Problem**: CORS errors in development
+```javascript
+// Add proper headers for CORS
+const makeApiRequest = async (url, options = {}) => {
+  const defaultHeaders = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  };
+  
+  // Don't set Content-Type for FormData
+  if (options.body instanceof FormData) {
+    delete defaultHeaders['Content-Type'];
+  }
+  
+  const config = {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...options.headers
+    }
+  };
+  
+  try {
+    const response = await fetch(url, config);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('API request failed:', error);
+    throw error;
+  }
+};
+```
+
+**Problem**: Network timeout handling
+```javascript
+// Add timeout to requests
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+    
+    throw error;
+  }
+};
+```
+
+#### **5. Mobile-Specific Issues**
+
+**Problem**: Camera not working on mobile
+```javascript
+// Check camera support
+const checkCameraSupport = () => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    console.warn('Camera not supported in this browser');
+    return false;
+  }
+  
+  return true;
+};
+
+// Request camera with proper constraints
+const startCamera = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment', // Use back camera on mobile
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    });
+    
+    return stream;
+  } catch (error) {
+    console.error('Camera access denied:', error);
+    throw new Error('Camera access required for photo verification');
+  }
+};
+```
+
+#### **6. Performance Issues**
+
+**Problem**: Dashboard loading slowly
+```javascript
+// Implement data caching
+const DataCache = {
+  data: null,
+  timestamp: null,
+  ttl: 60000, // 1 minute
+  
+  get(key) {
+    if (!this.data || !this.timestamp) return null;
+    
+    const age = Date.now() - this.timestamp;
+    if (age > this.ttl) {
+      this.clear();
+      return null;
+    }
+    
+    return this.data;
+  },
+  
+  set(key, data) {
+    this.data = data;
+    this.timestamp = Date.now();
+  },
+  
+  clear() {
+    this.data = null;
+    this.timestamp = null;
+  }
+};
+
+// Use cache in API calls
+const getCachedSatpamData = async (token) => {
+  const cached = DataCache.get('satpam-data');
+  if (cached) {
+    console.log('Using cached data');
+    return cached;
+  }
+  
+  const fresh = await getSatpamWorkList(token);
+  DataCache.set('satpam-data', fresh);
+  return fresh;
+};
+```
+
+### **Debugging Tips**
+
+#### **1. Enable Detailed Logging**
+```javascript
+const DEBUG = true; // Set to false in production
+
+const debugLog = (message, data = null) => {
+  if (!DEBUG) return;
+  
+  console.log(`🐛 [${new Date().toISOString()}] ${message}`);
+  if (data) {
+    console.log('📊 Data:', data);
+  }
+};
+
+// Use in API calls
+const apiCall = async (endpoint, options) => {
+  debugLog(`Making API call to: ${endpoint}`, options);
+  
+  try {
+    const response = await fetch(endpoint, options);
+    debugLog(`API response status: ${response.status}`);
+    
+    const data = await response.json();
+    debugLog('API response data:', data);
+    
+    return data;
+  } catch (error) {
+    debugLog(`API call failed: ${error.message}`, error);
+    throw error;
+  }
+};
+```
+
+#### **2. Validate API Responses**
+```javascript
+const validateApiResponse = (response, expectedFields = []) => {
+  if (!response) {
+    throw new Error('No response received');
+  }
+  
+  if (!response.success) {
+    throw new Error(response.message || 'API request failed');
+  }
+  
+  if (!response.data) {
+    throw new Error('No data in response');
+  }
+  
+  // Check required fields
+  expectedFields.forEach(field => {
+    if (!(field in response.data)) {
+      console.warn(`Missing expected field: ${field}`);
+    }
+  });
+  
+  return response.data;
+};
+```
+
+#### **3. Test API Endpoints**
+```javascript
+// Quick API test function
+const testApiEndpoint = async (endpoint, method = 'GET', body = null) => {
+  const token = localStorage.getItem('auth_token');
+  
+  console.log(`🧪 Testing ${method} ${endpoint}`);
+  
+  try {
+    const options = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    };
+    
+    if (body && method !== 'GET') {
+      if (body instanceof FormData) {
+        options.body = body;
+      } else {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+      }
+    }
+    
+    const response = await fetch(endpoint, options);
+    const data = await response.json();
+    
+    console.log(`✅ Status: ${response.status}`);
+    console.log('📦 Response:', data);
+    
+    return { status: response.status, data };
+  } catch (error) {
+    console.error(`❌ Test failed:`, error);
+    return { error: error.message };
+  }
+};
+
+// Usage examples:
+// testApiEndpoint('/api/izin');
+// testApiEndpoint('/api/izin/1/pickup-verification', 'POST', formData);
+```
+
+---
+
+## 🔧 **TROUBLESHOOTING GUIDE**
+
+### **Common API Issues and Solutions**
+
+#### **1. Authentication Problems**
+
+**Problem**: `401 Unauthorized` errors
+```javascript
+// ❌ Wrong
+fetch('/api/izin', {
+  headers: { 'Authorization': token }
+});
+
+// ✅ Correct  
+fetch('/api/izin', {
+  headers: { 'Authorization': `Bearer ${token}` }
+});
+```
+
+**Problem**: Token expired
+```javascript
+// Check token validity
+const checkTokenValidity = async (token) => {
+  try {
+    const response = await fetch('/api/user', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.status === 401) {
+      // Token expired, redirect to login
+      localStorage.removeItem('auth_token');
+      window.location.href = '/login';
+      return false;
+    }
+    
+    return response.ok;
+  } catch (error) {
+    console.error('Token check failed:', error);
+    return false;
+  }
+};
+```
+
+#### **2. File Upload Issues**
+
+**Problem**: Photo upload fails
+```javascript
+// ❌ Wrong - Don't set Content-Type for FormData
+const formData = new FormData();
+formData.append('santri_pickup_photo', file);
+
+fetch('/api/izin/1/pickup-verification', {
+  method: 'POST',
+  headers: { 
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'multipart/form-data' // ❌ Don't do this
+  },
+  body: formData
+});
+
+// ✅ Correct - Let browser set Content-Type
+fetch('/api/izin/1/pickup-verification', {
+  method: 'POST',
+  headers: { 'Authorization': `Bearer ${token}` }, // Only auth header
+  body: formData
+});
+```
+
+**Problem**: File size too large
+```javascript
+// Check file size before upload
+const validateFile = (file) => {
+  const maxSize = 5 * 1024 * 1024; // 5MB
+  
+  if (!file) {
+    throw new Error('No file selected');
+  }
+  
+  if (file.size > maxSize) {
+    throw new Error('File too large. Maximum size is 5MB');
+  }
+  
+  if (!file.type.startsWith('image/')) {
+    throw new Error('File must be an image');
+  }
+  
+  return true;
+};
+```
+
+#### **3. Data Processing Issues**
+
+**Problem**: Date formatting inconsistencies
+```javascript
+// ✅ Consistent date formatting
+const formatDate = (dateString) => {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    
+    return date.toLocaleString('id-ID', {
+      year: 'numeric',
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    console.error('Date formatting error:', error);
+    return 'Invalid Date';
+  }
+};
+```
+
+**Problem**: Status filtering not working
+```javascript
+// ✅ Robust status filtering
+const filterByStatus = (izinList, status) => {
+  if (!Array.isArray(izinList)) {
+    console.warn('izinList is not an array:', izinList);
+    return [];
+  }
+  
+  return izinList.filter(izin => {
+    if (!izin || typeof izin !== 'object') {
+      console.warn('Invalid izin object:', izin);
+      return false;
+    }
+    
+    return izin.status === status;
+  });
+};
+```
+
+#### **4. Network and Connectivity Issues**
+
+**Problem**: CORS errors in development
+```javascript
+// Add proper headers for CORS
+const makeApiRequest = async (url, options = {}) => {
+  const defaultHeaders = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  };
+  
+  // Don't set Content-Type for FormData
+  if (options.body instanceof FormData) {
+    delete defaultHeaders['Content-Type'];
+  }
+  
+  const config = {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...options.headers
+    }
+  };
+  
+  try {
+    const response = await fetch(url, config);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('API request failed:', error);
+    throw error;
+  }
+};
+```
+
+**Problem**: Network timeout handling
+```javascript
+// Add timeout to requests
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+    
+    throw error;
+  }
+};
+```
+
+#### **5. Mobile-Specific Issues**
+
+**Problem**: Camera not working on mobile
+```javascript
+// Check camera support
+const checkCameraSupport = () => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    console.warn('Camera not supported in this browser');
+    return false;
+  }
+  
+  return true;
+};
+
+// Request camera with proper constraints
+const startCamera = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment', // Use back camera on mobile
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    });
+    
+    return stream;
+  } catch (error) {
+    console.error('Camera access denied:', error);
+    throw new Error('Camera access required for photo verification');
+  }
+};
+```
+
+#### **6. Performance Issues**
+
+**Problem**: Dashboard loading slowly
+```javascript
+// Implement data caching
+const DataCache = {
+  data: null,
+  timestamp: null,
+  ttl: 60000, // 1 minute
+  
+  get(key) {
+    if (!this.data || !this.timestamp) return null;
+    
+    const age = Date.now() - this.timestamp;
+    if (age > this.ttl) {
+      this.clear();
+      return null;
+    }
+    
+    return this.data;
+  },
+  
+  set(key, data) {
+    this.data = data;
+    this.timestamp = Date.now();
+  },
+  
+  clear() {
+    this.data = null;
+    this.timestamp = null;
+  }
+};
+
+// Use cache in API calls
+const getCachedSatpamData = async (token) => {
+  const cached = DataCache.get('satpam-data');
+  if (cached) {
+    console.log('Using cached data');
+    return cached;
+  }
+  
+  const fresh = await getSatpamWorkList(token);
+  DataCache.set('satpam-data', fresh);
+  return fresh;
+};
+```
+
+### **Debugging Tips**
+
+#### **1. Enable Detailed Logging**
+```javascript
+const DEBUG = true; // Set to false in production
+
+const debugLog = (message, data = null) => {
+  if (!DEBUG) return;
+  
+  console.log(`🐛 [${new Date().toISOString()}] ${message}`);
+  if (data) {
+    console.log('📊 Data:', data);
+  }
+};
+
+// Use in API calls
+const apiCall = async (endpoint, options) => {
+  debugLog(`Making API call to: ${endpoint}`, options);
+  
+  try {
+    const response = await fetch(endpoint, options);
+    debugLog(`API response status: ${response.status}`);
+    
+    const data = await response.json();
+    debugLog('API response data:', data);
+    
+    return data;
+  } catch (error) {
+    debugLog(`API call failed: ${error.message}`, error);
+    throw error;
+  }
+};
+```
+
+#### **2. Validate API Responses**
+```javascript
+const validateApiResponse = (response, expectedFields = []) => {
+  if (!response) {
+    throw new Error('No response received');
+  }
+  
+  if (!response.success) {
+    throw new Error(response.message || 'API request failed');
+  }
+  
+  if (!response.data) {
+    throw new Error('No data in response');
+  }
+  
+  // Check required fields
+  expectedFields.forEach(field => {
+    if (!(field in response.data)) {
+      console.warn(`Missing expected field: ${field}`);
+    }
+  });
+  
+  return response.data;
+};
+```
+
+#### **3. Test API Endpoints**
+```javascript
+// Quick API test function
+const testApiEndpoint = async (endpoint, method = 'GET', body = null) => {
+  const token = localStorage.getItem('auth_token');
+  
+  console.log(`🧪 Testing ${method} ${endpoint}`);
+  
+  try {
+    const options = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    };
+    
+    if (body && method !== 'GET') {
+      if (body instanceof FormData) {
+        options.body = body;
+      } else {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+      }
+    }
+    
+    const response = await fetch(endpoint, options);
+    const data = await response.json();
+    
+    console.log(`✅ Status: ${response.status}`);
+    console.log('📦 Response:', data);
+    
+    return { status: response.status, data };
+  } catch (error) {
+    console.error(`❌ Test failed:`, error);
+    return { error: error.message };
+  }
+};
+
+// Usage examples:
+// testApiEndpoint('/api/izin');
+// testApiEndpoint('/api/izin/1/pickup-verification', 'POST', formData);
+```
+
+---
+
+## 🔧 **TROUBLESHOOTING GUIDE**
+
+### **Common API Issues and Solutions**
+
+#### **1. Authentication Problems**
+
+**Problem**: `401 Unauthorized` errors
+```javascript
+// ❌ Wrong
+fetch('/api/izin', {
+  headers: { 'Authorization': token }
+});
+
+// ✅ Correct  
+fetch('/api/izin', {
+  headers: { 'Authorization': `Bearer ${token}` }
+});
+```
+
+**Problem**: Token expired
+```javascript
+// Check token validity
+const checkTokenValidity = async (token) => {
+  try {
+    const response = await fetch('/api/user', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.status === 401) {
+      // Token expired, redirect to login
+      localStorage.removeItem('auth_token');
+      window.location.href = '/login';
+      return false;
+    }
+    
+    return response.ok;
+  } catch (error) {
+    console.error('Token check failed:', error);
+    return false;
+  }
+};
+```
+
+#### **2. File Upload Issues**
+
+**Problem**: Photo upload fails
+```javascript
+// ❌ Wrong - Don't set Content-Type for FormData
+const formData = new FormData();
+formData.append('santri_pickup_photo', file);
+
+fetch('/api/izin/1/pickup-verification', {
+  method: 'POST',
+  headers: { 
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'multipart/form-data' // ❌ Don't do this
+  },
+  body: formData
+});
+
+// ✅ Correct - Let browser set Content-Type
+fetch('/api/izin/1/pickup-verification', {
+  method: 'POST',
+  headers: { 'Authorization': `Bearer ${token}` }, // Only auth header
+  body: formData
+});
+```
+
+**Problem**: File size too large
+```javascript
+// Check file size before upload
+const validateFile = (file) => {
+  const maxSize = 5 * 1024 * 1024; // 5MB
+  
+  if (!file) {
+    throw new Error('No file selected');
+  }
+  
+  if (file.size > maxSize) {
+    throw new Error('File too large. Maximum size is 5MB');
+  }
+  
+  if (!file.type.startsWith('image/')) {
+    throw new Error('File must be an image');
+  }
+  
+  return true;
+};
+```
+
+#### **3. Data Processing Issues**
+
+**Problem**: Date formatting inconsistencies
+```javascript
+// ✅ Consistent date formatting
+const formatDate = (dateString) => {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    
+    return date.toLocaleString('id-ID', {
+      year: 'numeric',
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    console.error('Date formatting error:', error);
+    return 'Invalid Date';
+  }
+};
+```
+
+**Problem**: Status filtering not working
+```javascript
+// ✅ Robust status filtering
+const filterByStatus = (izinList, status) => {
+  if (!Array.isArray(izinList)) {
+    console.warn('izinList is not an array:', izinList);
+    return [];
+  }
+  
+  return izinList.filter(izin => {
+    if (!izin || typeof izin !== 'object') {
+      console.warn('Invalid izin object:', izin);
+      return false;
+    }
+    
+    return izin.status === status;
+  });
+};
+```
+
+#### **4. Network and Connectivity Issues**
+
+**Problem**: CORS errors in development
+```javascript
+// Add proper headers for CORS
+const makeApiRequest = async (url, options = {}) => {
+  const defaultHeaders = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  };
+  
+  // Don't set Content-Type for FormData
+  if (options.body instanceof FormData) {
+    delete defaultHeaders['Content-Type'];
+  }
+  
+  const config = {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...options.headers
+    }
+  };
+  
+  try {
+    const response = await fetch(url, config);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('API request failed:', error);
+    throw error;
+  }
+};
+```
+
+**Problem**: Network timeout handling
+```javascript
+// Add timeout to requests
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+    
+    throw error;
+  }
+};
+```
+
+#### **5. Mobile-Specific Issues**
+
+**Problem**: Camera not working on mobile
+```javascript
+// Check camera support
+const checkCameraSupport = () => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    console.warn('Camera not supported in this browser');
+    return false;
+  }
+  
+  return true;
+};
+
+// Request camera with proper constraints
+const startCamera = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment', // Use back camera on mobile
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    });
+    
+    return stream;
+  } catch (error) {
+    console.error('Camera access denied:', error);
+    throw new Error('Camera access required for photo verification');
+  }
+};
+```
+
+#### **6. Performance Issues**
+
+**Problem**: Dashboard loading slowly
+```javascript
+// Implement data caching
+const DataCache = {
+  data: null,
+  timestamp: null,
+  ttl: 60000, // 1 minute
+  
+  get(key) {
+    if (!this.data || !this.timestamp) return null;
+    
+    const age = Date.now() - this.timestamp;
+    if (age > this.ttl) {
+      this.clear();
+      return null;
+    }
+    
+    return this.data;
+  },
+  
+  set(key, data) {
+    this.data = data;
+    this.timestamp = Date.now();
+  },
+  
+  clear() {
+    this.data = null;
+    this.timestamp = null;
+  }
+};
+
+// Use cache in API calls
+const getCachedSatpamData = async (token) => {
+  const cached = DataCache.get('satpam-data');
+  if (cached) {
+    console.log('Using cached data');
+    return cached;
+  }
+  
+  const fresh = await getSatpamWorkList(token);
+  DataCache.set('satpam-data', fresh);
+  return fresh;
+};
+```
+
+### **Debugging Tips**
+
+#### **1. Enable Detailed Logging**
+```javascript
+const DEBUG = true; // Set to false in production
+
+const debugLog = (message, data = null) => {
+  if (!DEBUG) return;
+  
+  console.log(`🐛 [${new Date().toISOString()}] ${message}`);
+  if (data) {
+    console.log('📊 Data:', data);
+  }
+};
+
+// Use in API calls
+const apiCall = async (endpoint, options) => {
+  debugLog(`Making API call to: ${endpoint}`, options);
+  
+  try {
+    const response = await fetch(endpoint, options);
+    debugLog(`API response status: ${response.status}`);
+    
+    const data = await response.json();
+    debugLog('API response data:', data);
+    
+    return data;
+  } catch (error) {
+    debugLog(`API call failed: ${error.message}`, error);
+    throw error;
+  }
+};
+```
+
+#### **2. Validate API Responses**
+```javascript
+const validateApiResponse = (response, expectedFields = []) => {
+  if (!response) {
+    throw new Error('No response received');
+  }
+  
+  if (!response.success) {
+    throw new Error(response.message || 'API request failed');
+  }
+  
+  if (!response.data) {
+    throw new Error('No data in response');
+  }
+  
+  // Check required fields
+  expectedFields.forEach(field => {
+    if (!(field in response.data)) {
+      console.warn(`Missing expected field: ${field}`);
+    }
+  });
+  
+  return response.data;
+};
+```
+
+#### **3. Test API Endpoints**
+```javascript
+// Quick API test function
+const testApiEndpoint = async (endpoint, method = 'GET', body = null) => {
+  const token = localStorage.getItem('auth_token');
+  
+  console.log(`🧪 Testing ${method} ${endpoint}`);
+  
+  try {
+    const options = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    };
+    
+    if (body && method !== 'GET') {
+      if (body instanceof FormData) {
+        options.body = body;
+      } else {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+      }
+    }
+    
+    const response = await fetch(endpoint, options);
+    const data = await response.json();
+    
+    console.log(`✅ Status: ${response.status}`);
+    console.log('📦 Response:', data);
+    
+    return { status: response.status, data };
+  } catch (error) {
+    console.error(`❌ Test failed:`, error);
+    return { error: error.message };
+  }
+};
+
+// Usage examples:
+// testApiEndpoint('/api/izin');
+// testApiEndpoint('/api/izin/1/pickup-verification', 'POST', formData);
+```
+
+---
+
+## 🔧 **TROUBLESHOOTING GUIDE**
+
+### **Common API Issues and Solutions**
+
+#### **1. Authentication Problems**
+
+**Problem**: `401 Unauthorized` errors
+```javascript
+// ❌ Wrong
+fetch('/api/izin', {
+  headers: { 'Authorization': token }
+});
+
+// ✅ Correct  
+fetch('/api/izin', {
+  headers: { 'Authorization': `Bearer ${token}` }
+});
+```
+
+**Problem**: Token expired
+```javascript
+// Check token validity
+const checkTokenValidity = async (token) => {
+  try {
+    const response = await fetch('/api/user', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.status === 401) {
+      // Token expired, redirect to login
+      localStorage.removeItem('auth_token');
+      window.location.href = '/login';
+      return false;
+    }
+    
+    return response.ok;
+  } catch (error) {
+    console.error('Token check failed:', error);
+    return false;
+  }
+};
+```
+
+#### **2. File Upload Issues**
+
+**Problem**: Photo upload fails
+```javascript
+// ❌ Wrong - Don't set Content-Type for FormData
+const formData = new FormData();
+formData.append('santri_pickup_photo', file);
+
+fetch('/api/izin/1/pickup-verification', {
+  method: 'POST',
+  headers: { 
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'multipart/form-data' // ❌ Don't do this
+  },
+  body: formData
+});
+
+// ✅ Correct - Let browser set Content-Type
+fetch('/api/izin/1/pickup-verification', {
+  method: 'POST',
+  headers: { 'Authorization': `Bearer ${token}` }, // Only auth header
+  body: formData
+});
+```
+
+**Problem**: File size too large
+```javascript
+// Check file size before upload
+const validateFile = (file) => {
+  const maxSize = 5 * 1024 * 1024; // 5MB
+  
+  if (!file) {
+    throw new Error('No file selected');
+  }
+  
+  if (file.size > maxSize) {
+    throw new Error('File too large. Maximum size is 5MB');
+  }
+  
+  if (!file.type.startsWith('image/')) {
+    throw new Error('File must be an image');
+  }
+  
+  return true;
+};
+```
+
+#### **3. Data Processing Issues**
+
+**Problem**: Date formatting inconsistencies
+```javascript
+// ✅ Consistent date formatting
+const formatDate = (dateString) => {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    
+    return date.toLocaleString('id-ID', {
+      year: 'numeric',
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    console.error('Date formatting error:', error);
+    return 'Invalid Date';
+  }
+};
+```
+
+**Problem**: Status filtering not working
+```javascript
+// ✅ Robust status filtering
+const filterByStatus = (izinList, status) => {
+  if (!Array.isArray(izinList)) {
+    console.warn('izinList is not an array:', izinList);
+    return [];
+  }
+  
+  return izinList.filter(izin => {
+    if (!izin || typeof izin !== 'object') {
+      console.warn('Invalid izin object:', izin);
+      return false;
+    }
+    
+    return izin.status === status;
+  });
+};
+```
+
+#### **4. Network and Connectivity Issues**
+
+**Problem**: CORS errors in development
+```javascript
+// Add proper headers for CORS
+const makeApiRequest = async (url, options = {}) => {
+  const defaultHeaders = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  };
+  
+  // Don't set Content-Type for FormData
+  if (options.body instanceof FormData) {
+    delete defaultHeaders['Content-Type'];
+  }
+  
+  const config = {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...options.headers
+    }
+  };
+  
+  try {
+    const response = await fetch(url, config);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('API request failed:', error);
+    throw error;
+  }
+};
+```
+
+**Problem**: Network timeout handling
+```javascript
+// Add timeout to requests
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+    
+    throw error;
+  }
+};
+```
+
+#### **5. Mobile-Specific Issues**
+
+**Problem**: Camera not working on mobile
+```javascript
+// Check camera support
+const checkCameraSupport = () => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    console.warn('Camera not supported in this browser');
+    return false;
+  }
+  
+  return true;
+};
+
+// Request camera with proper constraints
+const startCamera = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment', // Use back camera on mobile
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    });
+    
+    return stream;
+  } catch (error) {
+    console.error('Camera access denied:', error);
+    throw new Error('Camera access required for photo verification');
+  }
+};
+```
+
+#### **6. Performance Issues**
+
+**Problem**: Dashboard loading slowly
+```javascript
+// Implement data caching
+const DataCache = {
+  data: null,
+  timestamp: null,
+  ttl: 60000, // 1 minute
+  
+  get(key) {
+    if (!this.data || !this.timestamp) return null;
+    
+    const age = Date.now() - this.timestamp;
+    if (age > this.ttl) {
+      this.clear();
+      return null;
+    }
+    
+    return this.data;
+  },
+  
+  set(key, data) {
+    this.data = data;
+    this.timestamp = Date.now();
+  },
+  
+  clear() {
+    this.data = null;
+    this.timestamp = null;
+  }
+};
+
+// Use cache in API calls
+const getCachedSatpamData = async (token) => {
+  const cached = DataCache.get('satpam-data');
+  if (cached) {
+    console.log('Using cached data');
+    return cached;
+  }
+  
+  const fresh = await getSatpamWorkList(token);
+  DataCache.set('satpam-data', fresh);
+  return fresh;
+};
+```
+
+### **Debugging Tips**
+
+#### **1. Enable Detailed Logging**
+```javascript
+const DEBUG = true; // Set to false in production
+
+const debugLog = (message, data = null) => {
+  if (!DEBUG) return;
+  
+  console.log(`🐛 [${new Date().toISOString()}] ${message}`);
+  if (data) {
+    console.log('📊 Data:', data);
+  }
+};
+
+// Use in API calls
+const apiCall = async (endpoint, options) => {
+  debugLog(`Making API call to: ${endpoint}`, options);
+  
+  try {
+    const response = await fetch(endpoint, options);
+    debugLog(`API response status: ${response.status}`);
+    
+    const data = await response.json();
+    debugLog('API response data:', data);
+    
+    return data;
+  } catch (error) {
+    debugLog(`API call failed: ${error.message}`, error);
+    throw error;
+  }
+};
+```
+
+#### **2. Validate API Responses**
+```javascript
+const validateApiResponse = (response, expectedFields = []) => {
+  if (!response) {
+    throw new Error('No response received');
+  }
+  
+  if (!response.success) {
+    throw new Error(response.message || 'API request failed');
+  }
+  
+  if (!response.data) {
+    throw new Error('No data in response');
+  }
+  
+  // Check required fields
+  expectedFields.forEach(field => {
+    if (!(field in response.data)) {
+      console.warn(`Missing expected field: ${field}`);
+    }
+  });
+  
+  return response.data;
+};
+```
+
+#### **3. Test API Endpoints**
+```javascript
+// Quick API test function
+const testApiEndpoint = async (endpoint, method = 'GET', body = null) => {
+  const token = localStorage.getItem('auth_token');
+  
+  console.log(`🧪 Testing ${method} ${endpoint}`);
+  
+  try {
+    const options = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    };
+    
+    if (body && method !== 'GET') {
+      if (body instanceof FormData) {
+        options.body = body;
+      } else {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+      }
+    }
+    
+    const response = await fetch(endpoint, options);
+    const data = await response.json();
+    
+    console.log(`✅ Status: ${response.status}`);
+    console.log('📦 Response:', data);
+    
+    return { status: response.status, data };
+  } catch (error) {
+    console.error(`❌ Test failed:`, error);
+    return { error: error.message };
+  }
+};
+
+// Usage examples:
+// testApiEndpoint('/api/izin');
+// testApiEndpoint('/api/izin/1/pickup-verification', 'POST', formData);
 ```
